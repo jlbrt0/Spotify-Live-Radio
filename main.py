@@ -9,8 +9,10 @@ from telegram.ext import (
 )
 from telegram.error import BadRequest
 from dotenv import load_dotenv
+from functions_framework import http
 import os
 import re
+import asyncio
 from backend import *
 
 load_dotenv()
@@ -20,6 +22,10 @@ FRIEND_ID = range(1)
 USER_NAME = range(1)
 
 database_information = connect_to_database()
+
+@http
+def telegram_bot(request):
+    return asyncio.run(main(request))
 
 #Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -130,7 +136,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         await update.message.reply_text("La Live Radio a été partagée à tout tes amis !")
 
-def main() -> None:
+async def main(request) -> None:
     application = Application.builder().token(token=token).build()
 
     start_conv = ConversationHandler(
@@ -158,6 +164,12 @@ def main() -> None:
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+    if request.method == 'GET':
+        await bot.set_webhook(f'https://{request.host}/telegram_bot')
+        return "webhook set"
 
-if __name__ == "__main__":
-    main()
+    async with application:
+        update = Update.de_json(request.json, bot)
+        await application.process_update(update)
+
+    return "ok"
