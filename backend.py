@@ -1,66 +1,92 @@
-import empyrebase
+from backend import DATABASE, TOKEN, connect_database
+import os, ast
 from dotenv import load_dotenv
-import os
-import ast
+import empyrebase
 
+DATABASE = None
+TOKEN = None
 
-def connect_to_database():
+def initialize_database():
+    global DATABASE, TOKEN
     load_dotenv()
-    config = os.getenv('CONFIG')
-    config = ast.literal_eval(config)
+    config = ast.literal_eval(os.getenv('CONFIG'))
     email = os.getenv('EMAIL')
     password = os.getenv('PASSWORD')
-
     firebase = empyrebase.initialize_app(config)
-
     auth = firebase.auth()
     user = auth.sign_in_with_email_and_password(email, password)
+    DATABASE = firebase.database()
+    TOKEN = user['idToken']
+    print("initialisation de la base de donnée")
 
-    db = firebase.database()
-    token = user['idToken']
-
-    database_information = (db, token)
-
-    return database_information
-
-def create_profile(database_information, user_id, user_name):
-    database, token = database_information
-
-    data = {user_id : {'friends' : '', 'username': user_name}}
+def connect_database():
+    global DATABASE, TOKEN
     try:
-        database.child("Users").update(token=token, data=data)
+        DATABASE.child("Users/").get(token=TOKEN)
     except Exception:
-        database, token = connect_to_database()
-        database.child("Users").update(token=token, data=data)
+        initialize_database()
 
+def create_profil(username, user_id, name):
+    connect_database()
+    data_users = {username : {'user_id': user_id, 'name': name, 'friends' : ''}}
+    data_telegram = {user_id : {'username': username, 'friends': ''}}
+    DATABASE.child("Telegram").update(token=TOKEN, data=data_telegram)
+    DATABASE.child("Users").update(token=TOKEN, data=data_users)
 
+def update_profil(old_username, username, user_id, name):
+    connect_database()
+    username_friends_list = get_username_friend_list(old_username)
 
-def add_friend(database_information, user_id, friend_id):
-    database, token = database_information
+    DATABASE.child(f"Users/{old_username}").remove(token=TOKEN)
+    DATABASE.child(f"Telegram/{user_id}/username").remove(token=TOKEN)
 
-    data = {friend_id : ''}
-    database.child(f"Users/{user_id}/friends").update(token=token, data=data)
+    data_telegram = {'username': username}
+    data_users = {username : {'user_id': user_id, 'name': name, 'friends': username_friends_list}}
 
-def get_username(database_information, user_id):
-    database, token = database_information
+    DATABASE.child(f"Telegram/{user_id}").update(token=TOKEN, data=data_telegram)
+    DATABASE.child(f"Users/").update(token=TOKEN, data=data_users)
 
-    try:
-        data = database.child(f"Users/{user_id}/username").get(token=token)
-    except Exception:
-        database, token = connect_to_database()
-        data = database.child(f"Users/{user_id}/username").get(token=token)
+def username_check(username):
+    connect_database()
+    username_list = DATABASE.child("Users").get(token=TOKEN).val()
+    return not (username in username_list)
 
+def id_check(user_id):
+    connect_database()
+    id_list = DATABASE.child("Telegram").get(token=TOKEN).val()
+
+    return not (str(user_id) in id_list)
+
+def add_friend(username, user_id, friend_username, friend_user_id):
+    connect_database()
+    data_users = {friend_username : ''}
+    data_telegram = {friend_user_id : ''}
+    DATABASE.child(f"Users/{username}/friends").update(token=TOKEN, data=data_users)
+    DATABASE.child(f"Telegram/{user_id}/friends").update(token=TOKEN, data=data_telegram)
+
+def get_username(user_id):
+    connect_database()
+    data = DATABASE.child(f"Telegram/{user_id}/username").get(token=TOKEN)
     return data.val()
 
-def get_friends(database_information, user_id):
-    database, token = database_information
+def get_name(username):
+    connect_database()
+    data = DATABASE.child(f"Users/{username}/name").get(token=TOKEN)
+    return data.val()
 
-    try:
-        data = database.child(f"Users/{user_id}/friends").get(token=token)
-    except Exception:
-        database, token = connect_to_database()
-        data = database.child(f"Users/{user_id}/friends").get(token=token)
-        
-    friends_dict = data.val()
-    
-    return friends_dict
+def get_id_friends_list(user_id):
+    connect_database()
+    data = DATABASE.child(f"Telegram/{user_id}/friends").get(token=TOKEN)    
+    return data.val()
+
+def get_username_friend_list(username):
+    connect_database()
+    data = DATABASE.child(f"Users/{username}/friends").get(token=TOKEN)    
+    return data.val()
+
+def get_user_id(username):
+    connect_database()
+    data = DATABASE.child(f"Users/{username}/user_id").get(token=TOKEN)
+    return data.val()
+
+# print(get_username(5295319047))
